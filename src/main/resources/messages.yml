@@ -1,0 +1,8 @@
+General:
+  kick-message: "&cYou have been disconnected for VPN/Proxy usage: %result%"
+
+Commands:
+  not-allowed: "&cYou don't have the permission to use this command."
+  reloaded: "&aConfig reloaded!"
+
+config-version: 1

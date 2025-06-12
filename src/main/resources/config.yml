@@ -1,0 +1,23 @@
+antivpn:
+  apikey: "YOUR_API_KEY_HERE" # Your API KEy
+  cachesize: 200 #Amount of players inside the Cache
+  cachetime: 1 #Amount of hours of the cached player
+  timeout: 5000 #Connection Timeout in milliseconds
+  retries: 3 #Amount of retries
+  allow-on-error: false #Allow connection even if the API returns an error
+
+Checks:
+  vpn: true
+  proxy: true
+  tor: true
+  datacenter: true
+  high-risk: 0.1 #The high risk threshold
+
+
+Debug:
+  enable: true #Enable extra logging for the antivpn results
+
+whitelist: #The Ip that you want to whitelist
+  - "127.0.0.1"
+
+config-version: 1
