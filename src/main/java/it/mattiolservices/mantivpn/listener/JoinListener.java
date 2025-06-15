@@ -2,7 +2,6 @@ package it.mattiolservices.mantivpn.listener;
 
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
-import com.velocitypowered.api.proxy.ProxyServer;
 import it.mattiolservices.mantivpn.MAntiVPN;
 import it.mattiolservices.mantivpn.antivpn.core.IPCheckResult;
 import it.mattiolservices.mantivpn.antivpn.type.CheckType;
@@ -33,11 +32,11 @@ public class JoinListener {
             return;
         }
 
-       if (MAntiVPN.getConfigManager().getConfig().getStringList("whitelist").contains(playerIP)) {
+        if (MAntiVPN.getConfigManager().getConfig().getStringList("whitelist").contains(playerIP)) {
             if(MAntiVPN.getConfigManager().getConfig().getBoolean("Debug.enable")) {
                 logger.info("[!] The player {} is whitelisted, bypassing check", player);
             }
-           return;
+            return;
         }
 
         IPCheckResult cachedResult = MAntiVPN.getInstance().getAntiVPNCache().getCachedResult(playerIP);
@@ -51,33 +50,43 @@ public class JoinListener {
         }
 
         if(MAntiVPN.getConfigManager().getConfig().getBoolean("Debug.enable")) {
-            logger.info("[!] Using cached result for player {} (IP: {})", player, playerIP);
+            logger.info("[!] No cached result found for player {} (IP: {}), performing async check", player, playerIP);
         }
 
         CompletableFuture<IPCheckResult> checkFuture =
                 MAntiVPN.getInstance().getAntiVPNManager().checkIPAsync(playerIP);
 
-        checkFuture.whenComplete((result, throwable) -> {
-            if (throwable != null) {
+        try {
+            IPCheckResult result = checkFuture.get();
 
-                if (MAntiVPN.getConfigManager().getConfig().getBoolean("antivpn.allow-on-error")) {
-                    event.setResult(PreLoginEvent.PreLoginComponentResult.allowed());
-                } else {
-                    Component errorMessage = LegacyComponentSerializer.legacyAmpersand()
-                            .deserialize(MAntiVPN.getConfigManager().getMessages().getString("General.error-message"));
-                    event.setResult(PreLoginEvent.PreLoginComponentResult.denied(errorMessage));
+            if (!result.isSuspicious(MAntiVPN.getConfigManager())) {
+                MAntiVPN.getInstance().getAntiVPNCache().cacheResult(playerIP, result);
+
+                if(MAntiVPN.getConfigManager().getConfig().getBoolean("Debug.enable")) {
+                    logger.info("[!] Cached clean result for IP: {}", playerIP);
                 }
-                return;
+            } else {
+                if(MAntiVPN.getConfigManager().getConfig().getBoolean("Debug.enable")) {
+                    logger.info("[!] Not caching suspicious result for IP: {}", playerIP);
+                }
             }
 
-            MAntiVPN.getInstance().getAntiVPNCache().cacheResult(playerIP, result);
-
             handleCheckResult(event, player, result);
-        });
+
+        } catch (Exception e) {
+            logger.error("[!] Failed to get async result for player {}: {}", player, e.getMessage());
+
+            if (MAntiVPN.getConfigManager().getConfig().getBoolean("antivpn.allow-on-error")) {
+                event.setResult(PreLoginEvent.PreLoginComponentResult.allowed());
+            } else {
+                Component errorMessage = LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(MAntiVPN.getConfigManager().getMessages().getString("General.error-message"));
+                event.setResult(PreLoginEvent.PreLoginComponentResult.denied(errorMessage));
+            }
+        }
     }
 
     private void handleCheckResult(PreLoginEvent event, String username, IPCheckResult result) {
-
         if (result.isSuspicious(MAntiVPN.getConfigManager())) {
             String reason = buildKickReason(result, MAntiVPN.getConfigManager());
 
@@ -94,8 +103,7 @@ public class JoinListener {
             event.setResult(PreLoginEvent.PreLoginComponentResult.denied(kickMessage));
         } else {
             if(MAntiVPN.getConfigManager().getConfig().getBoolean("Debug.enable")) {
-                logger.info("Denied connection for player {} for VPN/Proxy usage: {}",
-                        username, result.threatScore());
+                logger.info("Allowed connection for player {} (Score: {})", username, result.threatScore());
             }
 
             event.setResult(PreLoginEvent.PreLoginComponentResult.allowed());
@@ -127,15 +135,9 @@ public class JoinListener {
                         detectedTypes.append(checkType.getDisplayName()).append(" ");
                     }
                     break;
-                case HIGH_RISK:
-                    if (result.threatScore() >= config.getConfig().getDouble(checkType.getConfigKey())) {
-                        detectedTypes.append(checkType.getDisplayName()).append(" ");
-                    }
-                    break;
             }
         }
 
         return detectedTypes.toString().trim();
     }
-
 }

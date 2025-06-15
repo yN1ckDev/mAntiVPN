@@ -25,30 +25,32 @@ public record IPCheckResult(
 
     public boolean isSuspicious(ConfigManager config) {
         for (CheckType checkType : CheckType.values()) {
+            boolean checkEnabled = config.getConfig().getBoolean(checkType.getConfigKey());
+
             switch (checkType) {
                 case VPN:
-                    if (config.getConfig().getBoolean("checks." + checkType.getConfigKey()) && vpn) {
+                    if (checkEnabled && vpn) {
                         return true;
                     }
                     break;
                 case PROXY:
-                    if (config.getConfig().getBoolean("checks." + checkType.getConfigKey()) && proxy) {
+                    if (checkEnabled && proxy) {
                         return true;
                     }
                     break;
                 case TOR:
-                    if (config.getConfig().getBoolean("checks." + checkType.getConfigKey()) && tor) {
+                    if (checkEnabled && tor) {
                         return true;
                     }
                     break;
                 case DATACENTER:
-                    if (config.getConfig().getBoolean("checks." + checkType.getConfigKey()) && datacenter && !residential) {
+                    if (checkEnabled && datacenter && !residential) {
                         return true;
                     }
                     break;
                 case HIGH_RISK:
-                    double threshold = config.getConfig().getDouble("checks." + checkType.getConfigKey());
-                    if (threatScore >= threshold) {
+                    double threshold = config.getConfig().getDouble(checkType.getConfigKey());
+                    if (checkEnabled && threatScore > threshold) {
                         return true;
                     }
                     break;
