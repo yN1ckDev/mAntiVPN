@@ -37,3 +37,5 @@ discord:
     debug-sent: false
     debug-success: false
     error-timeout: true
+
+config-version: 1

@@ -36,3 +36,5 @@ alerts:
 
     # Log information about cache operations (clear, etc.)
     info-cache-operations: true
+
+config-version: 1
