@@ -52,7 +52,7 @@ public class ConfigManager {
 
     public void loadAlerts() {
         try {
-            messages = YamlDocument.create(
+            alerts = YamlDocument.create(
                     new File(MAntiVPN.getInstance().getDataDirectory().toFile(), "alerts.yml"),
                     getClass().getResourceAsStream("/alerts.yml"),
                     GeneralSettings.DEFAULT,
@@ -60,8 +60,8 @@ public class ConfigManager {
                     DumperSettings.DEFAULT,
                     UpdaterSettings.builder().setVersioning(new BasicVersioning("config-version")).build()
             );
-            messages.update();
-            messages.save();
+            alerts.update();
+            alerts.save();
         } catch (IOException ioException) {
             ioException.printStackTrace();
         }
@@ -69,7 +69,7 @@ public class ConfigManager {
 
     public void loadDiscord() {
         try {
-            messages = YamlDocument.create(
+            discord = YamlDocument.create(
                     new File(MAntiVPN.getInstance().getDataDirectory().toFile(), "discord.yml"),
                     getClass().getResourceAsStream("/discord.yml"),
                     GeneralSettings.DEFAULT,
@@ -77,8 +77,8 @@ public class ConfigManager {
                     DumperSettings.DEFAULT,
                     UpdaterSettings.builder().setVersioning(new BasicVersioning("config-version")).build()
             );
-            messages.update();
-            messages.save();
+            discord.update();
+            discord.save();
         } catch (IOException ioException) {
             ioException.printStackTrace();
         }
