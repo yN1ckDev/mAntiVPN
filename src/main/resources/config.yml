@@ -1,23 +1,79 @@
+# ================================
+# MAntiVPN Configuration File
+# ================================
+# This file contains all the settings for the MAntiVPN plugin.
+# Make sure to configure each section according to your needs.
+
+# ================================
+# ANTIVPN API SETTINGS
+# ================================
+# Configure the API connection and caching behavior
 antivpn:
-  apikey: "YOUR_API_KEY_HERE" # Your API KEy
-  cachesize: 200 #Amount of players inside the Cache
-  cachetime: 1 #Amount of hours of the cached player
-  timeout: 5000 #Connection Timeout in milliseconds
-  retries: 3 #Amount of retries
-  allow-on-error: false #Allow connection even if the API returns an error
+  # Your API key from your VPN detection service provider
+  # Replace "YOUR_API_KEY_HERE" with your actual API key
+  apikey: "YOUR_API_KEY_HERE"
 
+  # Number of player IP addresses to keep in cache
+  # Higher values = more memory usage but better performance
+  cachesize: 200
+
+  # How long to cache player results (in hours)
+  # After this time, the player's IP will be rechecked
+  cachetime: 1
+
+  # Connection timeout for API requests (in milliseconds)
+  # Increase if you have slow internet connection
+  timeout: 5000
+
+  # Number of times to retry failed API requests
+  # Higher values = more reliability but slower response on failures
+  retries: 3
+
+  # Whether to allow players to connect if the API is unreachable
+  # true = allow connection on API errors, false = block connection
+  allow-on-error: false
+
+# ================================
+# DETECTION CHECKS
+# ================================
+# Configure which types of connections to detect and block
 Checks:
+  # Block VPN connections
   vpn: true
+
+  # Block proxy connections
   proxy: true
+
+  # Block Tor network connections
   tor: true
+
+  # Block datacenter/hosting provider connections
   datacenter: true
-  high-risk: 0.1 #The high risk threshold
 
+  # High risk threshold (0.0 to 1.0)
+  # Higher values = more strict detection
+  # Lower values = more lenient detection
+  high-risk: 0.1
 
+# ================================
+# DEBUG SETTINGS
+# ================================
+# Enable additional logging for troubleshooting
 Debug:
-  enable: true #Enable extra logging for the antivpn results
+  # Enable extra logging for AntiVPN results
+  # Set to true when troubleshooting issues
+  enable: true
 
-whitelist: #The Ip that you want to whitelist
-  - "127.0.0.1"
+# ================================
+# IP WHITELIST
+# ================================
+# IP addresses that should never be blocked
+# Add your server's IP and any trusted IPs here
+whitelist:
+  - "127.0.0.1"  # localhost
 
+# ================================
+# CONFIGURATION VERSION
+# ================================
+# Don't change this value - it's used for config updates
 config-version: 1

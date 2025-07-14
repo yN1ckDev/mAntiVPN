@@ -1,0 +1,39 @@
+# Discord Webhook Configuration
+discord:
+  # Enable/disable Discord webhook alerts
+  enabled: false
+
+  # Discord webhook URL (get this from your Discord server settings)
+  webhook-url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+
+  # Bot appearance settings
+  bot-username: "MAntiVPN"
+  bot-avatar-url: "https://example.com/avatar.png"
+
+  # Embed customization
+  embed-description: "A player attempted to connect using a suspicious IP address."
+  footer-icon: "https://example.com/footer-icon.png"
+
+  # Embed colors (decimal format)
+  colors:
+    high-threat: 16711680   # Red (FF0000)
+    medium-threat: 16747520 # Orange (FF8C00)
+    low-threat: 16776960    # Yellow (FFFF00)
+
+  # Rate limiting (milliseconds between messages)
+  rate-limit-ms: 2000
+
+  # Timeout settings
+  timeout-enabled: true
+  timeout-seconds: 30
+
+  # Logging settings
+  logging:
+    warn-missing-url: true
+    debug-rate-limit: false
+    error-send-failures: true
+    error-http-failures: true
+    warn-detection-errors: true
+    debug-sent: false
+    debug-success: false
+    error-timeout: true

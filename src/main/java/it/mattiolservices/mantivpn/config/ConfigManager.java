@@ -14,8 +14,7 @@ import java.io.IOException;
 
 @Getter
 public class ConfigManager {
-    private YamlDocument messages;
-    private YamlDocument config;
+    private YamlDocument messages, config, alerts, discord;
 
     public void loadMessages() {
         try {
@@ -51,13 +50,52 @@ public class ConfigManager {
         }
     }
 
+    public void loadAlerts() {
+        try {
+            messages = YamlDocument.create(
+                    new File(MAntiVPN.getInstance().getDataDirectory().toFile(), "alerts.yml"),
+                    getClass().getResourceAsStream("/alerts.yml"),
+                    GeneralSettings.DEFAULT,
+                    LoaderSettings.builder().setAutoUpdate(true).build(),
+                    DumperSettings.DEFAULT,
+                    UpdaterSettings.builder().setVersioning(new BasicVersioning("config-version")).build()
+            );
+            messages.update();
+            messages.save();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        }
+    }
+
+    public void loadDiscord() {
+        try {
+            messages = YamlDocument.create(
+                    new File(MAntiVPN.getInstance().getDataDirectory().toFile(), "discord.yml"),
+                    getClass().getResourceAsStream("/discord.yml"),
+                    GeneralSettings.DEFAULT,
+                    LoaderSettings.builder().setAutoUpdate(true).build(),
+                    DumperSettings.DEFAULT,
+                    UpdaterSettings.builder().setVersioning(new BasicVersioning("config-version")).build()
+            );
+            messages.update();
+            messages.save();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        }
+    }
+
+
     public static void load() {
         MAntiVPN.getConfigManager().loadConfig();
         MAntiVPN.getConfigManager().loadMessages();
+        MAntiVPN.getConfigManager().loadAlerts();
+        MAntiVPN.getConfigManager().loadDiscord();
     }
 
     public void reload() throws IOException {
         messages.reload();
         config.reload();
+        alerts.reload();
+        discord.reload();
     }
 }

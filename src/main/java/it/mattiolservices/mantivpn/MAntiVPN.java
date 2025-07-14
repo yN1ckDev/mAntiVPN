@@ -9,15 +9,20 @@ import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import it.mattiolservices.mantivpn.alert.manager.AlertManager;
 import it.mattiolservices.mantivpn.antivpn.cache.AntiVPNCache;
 import it.mattiolservices.mantivpn.antivpn.manager.AntiVPNManager;
 import it.mattiolservices.mantivpn.commands.AntiVPNCMD;
 import it.mattiolservices.mantivpn.config.ConfigManager;
+import it.mattiolservices.mantivpn.discord.DiscordWebhookManager;
 import it.mattiolservices.mantivpn.listener.JoinListener;
 import lombok.Getter;
 import org.slf4j.Logger;
+import revxrsal.commands.velocity.VelocityLamp;
 
 import java.nio.file.Path;
+
+import static revxrsal.commands.velocity.VelocityVisitors.brigadier;
 
 @Plugin(
         id = "mantivpn",
@@ -50,6 +55,8 @@ public class MAntiVPN {
     @Getter
     private AntiVPNManager antiVPNManager;
     private AntiVPNCache antiVPNCache;
+    private AlertManager alertManager;
+    private DiscordWebhookManager discordWebhookManager;
 
     @Inject
     public MAntiVPN(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -83,9 +90,18 @@ public class MAntiVPN {
         this.antiVPNManager = new AntiVPNManager(configManager, logger);
         getLogger().info("[/] AntiVPN Service Loaded!");
         getLogger().info("");
+        getLogger().info("[/] Loading Alert Manager...");
+        this.alertManager = new AlertManager(server);
+        getLogger().info("[/] Alert Manager Loaded!");
+        getLogger().info("");
         getLogger().info("[/] Registering Commands and Listeners.....");
-        this.registerCommand("antivpn", new AntiVPNCMD(), "mantivpn");
-        server.getEventManager().register(this, new JoinListener(logger));
+        var lamp = VelocityLamp.builder(this, server).build();
+
+        lamp.register(new AntiVPNCMD(alertManager, configManager));
+
+        lamp.accept(brigadier(server));
+
+        server.getEventManager().register(this, new JoinListener(alertManager));
         getLogger().info("[/] Commands and Listeners Registered!");
 
     }
@@ -95,13 +111,13 @@ public class MAntiVPN {
         getLogger().info("[!] Shutting down AntiVPN Cache");
         this.antiVPNCache.clearCache();
         this.antiVPNCache.shutdown();
+        getLogger().info("[!] Successfully shut down AntiVPN Cache");
+        getLogger().info("");
+        getLogger().info("[!] Shutting Down Alert Manager & Discord WebHook System");
+        this.antiVPNCache.clearCache();
+        this.alertManager.shutdown();
+        this.discordWebhookManager.shutdown();
+        getLogger().info("[!] Successfully shut down Alert Manager & Discord WebHook System");
         getLogger().info("Goodbye!");
-    }
-
-
-    public void registerCommand(String name, SimpleCommand command, String... aliases) {
-        CommandManager commandManager = server.getCommandManager();
-
-        commandManager.register(commandManager.metaBuilder(name).aliases(aliases).build(), command);
     }
 }

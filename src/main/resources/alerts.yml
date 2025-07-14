@@ -1,0 +1,38 @@
+# ================================
+# ALERT SYSTEM
+# ================================
+# Configure how staff members are notified of detections
+alerts:
+  # Enable or disable the alert system entirely
+  enable: true
+
+  # Alert cache configuration
+  cache:
+    # Maximum number of alerts to store in cache
+    # Prevents spam by remembering recent alerts
+    max-size: 1000
+
+    # How long to remember alerts (in minutes)
+    # Duplicate alerts within this time won't be sent
+    expire-minutes: 5
+
+  # Alert logging configuration
+  logging:
+    # Log detection alerts to server console
+    log-to-console: true
+
+    # Log warning messages when invalid data is detected
+    warn-null-parameters: true
+
+    # Log error messages when alert sending fails
+    error-send-failures: true
+
+    # Log debug information about cached alerts
+    # Only works when Debug.enable is true
+    debug-cached-alerts: false
+
+    # Log warnings when detection type processing fails
+    warn-detection-errors: true
+
+    # Log information about cache operations (clear, etc.)
+    info-cache-operations: true

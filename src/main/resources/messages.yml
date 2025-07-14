@@ -1,8 +1,35 @@
 General:
   kick-message: "&cYou have been disconnected for VPN/Proxy usage: %result%"
 
-Commands:
-  not-allowed: "&cYou don't have the permission to use this command."
-  reloaded: "&aConfig reloaded!"
+antivpn:
+  alerts:
+    player-only: "&cThis command can only be used by players."
+    toggled:
+      enabled: "&7Alert notifications are now &aENABLED&7 for you."
+      disabled: "&7Alert notifications are now &cDISABLED&7 for you."
+    status:
+      header: "&7Alert Status for &e%player%&7:"
+      personal:
+        enabled: "&7  Personal: &aENABLED"
+        disabled: "&7  Personal: &cDISABLED"
+      global:
+        enabled: "&7  Global: &aENABLED"
+        disabled: "&7  Global: &cDISABLED"
+    manage:
+      enabled: "&7Alert notifications have been &aENABLED&7 for player &e%player%&7."
+      disabled: "&7Alert notifications have been &cDISABLED&7 for player &e%player%&7."
+
+  reload:
+    success: "&7Configuration has been &asuccessfully reloaded&7!"
+    failure: "&cFailed to reload configuration: &4%error%"
+
+  cache:
+    clear: "&7Alert cache has been &acleared&7! (&e%amount%&7 entries removed)"
+    info:
+      header: "&eCache Information:"
+      current-size: "&7  Current Size: &a%current% &7/ &e%max%"
+      expiry: "&7  Expiry Time: &e%minutes% minutes"
+      usage: "&7  Usage: &b%usage%%"
+
 
 config-version: 1
