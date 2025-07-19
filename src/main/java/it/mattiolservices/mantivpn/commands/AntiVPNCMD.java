@@ -7,11 +7,7 @@ import it.mattiolservices.mantivpn.alert.manager.AlertManager;
 import it.mattiolservices.mantivpn.config.ConfigManager;
 import it.mattiolservices.mantivpn.utils.CC;
 import lombok.extern.slf4j.Slf4j;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import revxrsal.commands.annotation.Command;
-import revxrsal.commands.annotation.Default;
 import revxrsal.commands.annotation.Description;
 import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.Named;
@@ -132,11 +128,7 @@ public class AntiVPNCMD {
                 ? MAntiVPN.getConfigManager().getMessages().getString("antivpn.alerts.status.global.enabled")
                 : MAntiVPN.getConfigManager().getMessages().getString("antivpn.alerts.status.global.disabled");
 
-        Component message = Component.text(statusHeader, NamedTextColor.GRAY)
-                .append(Component.text("\n" + personalMsg, alertsEnabled ? NamedTextColor.GREEN : NamedTextColor.RED))
-                .append(Component.text("\n" + globalMsg, globalAlertsEnabled ? NamedTextColor.GREEN : NamedTextColor.RED));
-
-        player.sendMessage(message);
+        player.sendMessage(CC.translate(statusHeader + "\n" + personalMsg + "\n" + globalMsg));
     }
 
     @Subcommand("reload")
