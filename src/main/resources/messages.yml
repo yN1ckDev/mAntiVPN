@@ -3,6 +3,7 @@ General:
 
 antivpn:
   alerts:
+    message: "&c&lANTIVPN &8&l• &c%player% &7tried to join with a VPN! &c%ip% &8| &c%detection% &8| &c%score% &8| &c%time%"
     player-only: "&cThis command can only be used by players."
     toggled:
       enabled: "&7Alert notifications are now &aENABLED&7 for you."

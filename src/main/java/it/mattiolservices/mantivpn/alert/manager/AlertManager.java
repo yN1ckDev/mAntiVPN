@@ -107,7 +107,7 @@ public class AlertManager {
     }
 
     private void sendInGameAlert(AlertInfo alertInfo, ConfigManager config) {
-        String alertMessage = config.getMessages().getString("alerts.message",
+        String alertMessage = config.getMessages().getString("antivpn.alerts.message",
                 "&c[AntiVPN] &e%player% &7tried to connect from a suspicious IP: &c%ip%\n" +
                         "&7Detection: &e%detection% &7| Score: &c%score% &7| Time: &e%time%");
 
