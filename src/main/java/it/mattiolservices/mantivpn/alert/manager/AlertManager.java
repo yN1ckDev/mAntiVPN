@@ -7,6 +7,7 @@ import it.mattiolservices.mantivpn.alert.info.AlertInfo;
 import it.mattiolservices.mantivpn.antivpn.core.IPCheckResult;
 import it.mattiolservices.mantivpn.antivpn.type.CheckType;
 import it.mattiolservices.mantivpn.config.ConfigManager;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -23,55 +24,68 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class AlertManager {
 
+    @Getter
     private final ProxyServer proxyServer;
     private final ConcurrentHashMap<String, AlertInfo> alertCache;
     private final ScheduledExecutorService cleanupExecutor;
     private final DiscordWebhookManager discordWebhookManager;
     private final int maxCacheSize;
     private final int expireMinutes;
+    private final boolean cacheEnabled;
 
     public AlertManager(ProxyServer proxyServer) {
         this.proxyServer = proxyServer;
 
         ConfigManager config = MAntiVPN.getConfigManager();
-        this.maxCacheSize = config.getConfig().getInt("alerts.cache.max-size", 1000);
-        this.expireMinutes = config.getConfig().getInt("alerts.cache.expire-minutes", 5);
+        this.cacheEnabled = config.getAlerts().getBoolean("alerts.cache.enabled", true);
+        this.maxCacheSize = config.getAlerts().getInt("alerts.cache.max-size", 1000);
+        this.expireMinutes = config.getAlerts().getInt("alerts.cache.expire-minutes", 5);
 
-        this.alertCache = new ConcurrentHashMap<>();
-        this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "AlertManager-Cleanup");
-            t.setDaemon(true);
-            return t;
-        });
+        if (cacheEnabled) {
+            this.alertCache = new ConcurrentHashMap<>();
+            this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "AlertManager-Cleanup");
+                t.setDaemon(true);
+                return t;
+            });
+            this.cleanupExecutor.scheduleAtFixedRate(this::cleanupExpiredEntries, 1, 1, TimeUnit.MINUTES);
+        } else {
+            this.alertCache = null;
+            this.cleanupExecutor = null;
+            if (config.getAlerts().getBoolean("alerts.logging.info-cache-operations", true)) {
+                log.info("[!] Alert caching is disabled - all alerts will be sent immediately");
+            }
+        }
 
         this.discordWebhookManager = new DiscordWebhookManager();
-
-        this.cleanupExecutor.scheduleAtFixedRate(this::cleanupExpiredEntries, 1, 1, TimeUnit.MINUTES);
     }
 
     public void sendAlert(String username, String playerIP, IPCheckResult result) {
         ConfigManager config = MAntiVPN.getConfigManager();
 
-        if (!config.getConfig().getBoolean("alerts.enable", true)) {
+        if (!config.getAlerts().getBoolean("alerts.enable", true)) {
             return;
         }
 
         if (username == null || playerIP == null || result == null) {
-            if (config.getConfig().getBoolean("alerts.logging.warn-null-parameters", true)) {
+            if (config.getAlerts().getBoolean("alerts.logging.warn-null-parameters", true)) {
                 log.warn("[!] Cannot send alert: null parameter detected (username: {}, playerIP: {}, result: {})",
                         username, playerIP, result);
             }
             return;
         }
 
-        String cacheKey = playerIP + ":" + username;
-        AlertInfo cachedAlert = alertCache.get(cacheKey);
+        // Check cache only if caching is enabled
+        if (cacheEnabled) {
+            String cacheKey = playerIP + ":" + username;
+            AlertInfo cachedAlert = alertCache.get(cacheKey);
 
-        if (cachedAlert != null && !isExpired(cachedAlert)) {
-            if (config.getConfig().getBoolean("alerts.logging.debug-cached-alerts", false)) {
-                log.info("[!] Alert for player {} (IP: {}) is cached, skipping duplicate alert", username, playerIP);
+            if (cachedAlert != null && !isExpired(cachedAlert)) {
+                if (config.getAlerts().getBoolean("alerts.logging.debug-cached-alerts", false)) {
+                    log.info("[!] Alert for player {} (IP: {}) is cached, skipping duplicate alert", username, playerIP);
+                }
+                return;
             }
-            return;
         }
 
         AlertInfo alertInfo = AlertInfo.builder()
@@ -81,17 +95,19 @@ public class AlertManager {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        if (alertCache.size() >= maxCacheSize) {
-            cleanupOldestEntries();
+        // Add to cache only if caching is enabled
+        if (cacheEnabled) {
+            if (alertCache.size() >= maxCacheSize) {
+                cleanupOldestEntries();
+            }
+            alertCache.put(playerIP + ":" + username, alertInfo);
         }
-
-        alertCache.put(cacheKey, alertInfo);
 
         CompletableFuture.runAsync(() -> {
             try {
                 sendAlertToStaff(alertInfo);
             } catch (Exception e) {
-                if (config.getConfig().getBoolean("alerts.logging.error-send-failures", true)) {
+                if (config.getAlerts().getBoolean("alerts.logging.error-send-failures", true)) {
                     log.error("[!] Failed to send alert for player {}: {}", username, e.getMessage());
                 }
             }
@@ -123,13 +139,11 @@ public class AlertManager {
         Component alertComponent = LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(finalMessage);
 
-        String alertPermission = config.getConfig().getString("alerts.permission", "mantivpn.alerts");
-
         proxyServer.getAllPlayers().stream()
-                .filter(player -> player.hasPermission(alertPermission))
+                .filter(player -> player.hasPermission("mantivpn.alerts"))
                 .forEach(player -> player.sendMessage(alertComponent));
 
-        if (config.getConfig().getBoolean("alerts.logging.log-to-console", true)) {
+        if (config.getAlerts().getBoolean("alerts.logging.log-to-console", true)) {
             log.warn("[ALERT] Player {} from IP {} triggered VPN/Proxy detection: {} (Score: {})",
                     alertInfo.username(), alertInfo.playerIP(), detectionTypes, alertInfo.result().threatScore());
         }
@@ -198,7 +212,7 @@ public class AlertManager {
                 }
             }
         } catch (Exception e) {
-            if (config.getConfig().getBoolean("alerts.logging.warn-detection-errors", true)) {
+            if (config.getAlerts().getBoolean("alerts.logging.warn-detection-errors", true)) {
                 log.warn("[!] Error building detection types: {}", e.getMessage());
             }
             return "Error";
@@ -213,11 +227,15 @@ public class AlertManager {
     }
 
     private void cleanupExpiredEntries() {
+        if (!cacheEnabled || alertCache == null) {
+            return;
+        }
+
         try {
             alertCache.entrySet().removeIf(entry -> isExpired(entry.getValue()));
 
             ConfigManager config = MAntiVPN.getConfigManager();
-            if (config.getConfig().getBoolean("alerts.logging.debug-cache-cleanup", false)) {
+            if (config.getAlerts().getBoolean("alerts.logging.debug-cache-cleanup", false)) {
                 log.debug("[!] Cleaned up expired alert cache entries. Current size: {}", alertCache.size());
             }
         } catch (Exception e) {
@@ -226,6 +244,10 @@ public class AlertManager {
     }
 
     private void cleanupOldestEntries() {
+        if (!cacheEnabled || alertCache == null) {
+            return;
+        }
+
         try {
             int entriesToRemove = Math.max(1, maxCacheSize / 10);
 
@@ -235,7 +257,7 @@ public class AlertManager {
                     .forEach(entry -> alertCache.remove(entry.getKey()));
 
             ConfigManager config = MAntiVPN.getConfigManager();
-            if (config.getConfig().getBoolean("alerts.logging.debug-cache-cleanup", false)) {
+            if (config.getAlerts().getBoolean("alerts.logging.debug-cache-cleanup", false)) {
                 log.debug("[!] Removed {} oldest entries from alert cache. Current size: {}",
                         entriesToRemove, alertCache.size());
             }
@@ -245,6 +267,14 @@ public class AlertManager {
     }
 
     public void clearAlertCache() {
+        if (!cacheEnabled || alertCache == null) {
+            ConfigManager config = MAntiVPN.getConfigManager();
+            if (config.getConfig().getBoolean("alerts.logging.info-cache-operations", true)) {
+                log.info("[!] Alert cache is disabled - nothing to clear");
+            }
+            return;
+        }
+
         alertCache.clear();
         ConfigManager config = MAntiVPN.getConfigManager();
         if (config.getConfig().getBoolean("alerts.logging.info-cache-operations", true)) {
@@ -253,6 +283,9 @@ public class AlertManager {
     }
 
     public long getAlertCacheSize() {
+        if (!cacheEnabled || alertCache == null) {
+            return 0;
+        }
         return alertCache.size();
     }
 
