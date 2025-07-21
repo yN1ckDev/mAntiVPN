@@ -12,12 +12,14 @@ import okhttp3.*;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 public class DiscordWebhookManager {
@@ -25,8 +27,9 @@ public class DiscordWebhookManager {
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final ScheduledExecutorService rateLimitExecutor;
-    private final AtomicLong lastMessageTime;
+    private volatile LocalDateTime lastMessageTime;
     private final int rateLimitMs;
+    private final Map<String, LocalDateTime> playerAlertHistory;
 
     public DiscordWebhookManager() {
         this.httpClient = new OkHttpClient.Builder()
@@ -41,7 +44,8 @@ public class DiscordWebhookManager {
             t.setDaemon(true);
             return t;
         });
-        this.lastMessageTime = new AtomicLong(0);
+        this.lastMessageTime = LocalDateTime.now().minusHours(1);
+        this.playerAlertHistory = new ConcurrentHashMap<>();
 
         ConfigManager config = MAntiVPN.getConfigManager();
         this.rateLimitMs = config.getDiscord().getInt("discord.rate-limit-ms", 2000);
@@ -56,66 +60,81 @@ public class DiscordWebhookManager {
 
         String webhookUrl = config.getDiscord().getString("discord.webhook-url", "");
         if (webhookUrl.isEmpty()) {
-            if (config.getConfig().getBoolean("discord.logging.warn-missing-url", true)) {
-                log.warn("[Discord] Webhook URL is not configured");
-            }
+            log.warn("[Discord] Webhook URL is not configured");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        if (!shouldSendAlert(alertInfo)) {
             return CompletableFuture.completedFuture(null);
         }
 
         return CompletableFuture.runAsync(() -> {
             try {
-                long currentTime = System.currentTimeMillis();
-                long timeSinceLastMessage = currentTime - lastMessageTime.get();
+                synchronized (this) {
+                    LocalDateTime currentTime = LocalDateTime.now();
+                    long timeSinceLastMessage = ChronoUnit.MILLIS.between(lastMessageTime, currentTime);
 
-                if (timeSinceLastMessage < rateLimitMs) {
-                    long delay = rateLimitMs - timeSinceLastMessage;
-                    if (config.getDiscord().getBoolean("discord.logging.debug-rate-limit", false)) {
-                        log.debug("[Discord] Rate limiting: waiting {}ms before sending message", delay);
+                    if (timeSinceLastMessage < rateLimitMs) {
+                        long delay = rateLimitMs - timeSinceLastMessage;
+                        try {
+                            Thread.sleep(delay);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
                     }
-                    Thread.sleep(delay);
+
+                    boolean success = sendWebhook(webhookUrl, alertInfo);
+                    if (success) {
+                        lastMessageTime = LocalDateTime.now();
+                        ConfigManager config2 = MAntiVPN.getConfigManager();
+                        int cooldownMinutes = config2.getDiscord().getInt("discord.player-alert-cooldown-minutes", 0);
+                        if (cooldownMinutes > 0) {
+                            playerAlertHistory.put(alertInfo.username(), LocalDateTime.now());
+                        }
+                    }
                 }
-
-                lastMessageTime.set(System.currentTimeMillis());
-                sendWebhook(webhookUrl, alertInfo);
-
             } catch (Exception e) {
-                if (config.getDiscord().getBoolean("discord.logging.error-send-failures", true)) {
-                    log.error("[Discord] Failed to send webhook for player {}: {}",
-                            alertInfo.username(), e.getMessage());
-                }
+                log.error("[Discord] Failed to send webhook for player {}: {}",
+                        alertInfo.username(), e.getMessage());
             }
-        });
+        }, rateLimitExecutor);
     }
 
-    private void sendWebhook(String webhookUrl, AlertInfo alertInfo) throws IOException {
-        ConfigManager config = MAntiVPN.getConfigManager();
+    private boolean sendWebhook(String webhookUrl, AlertInfo alertInfo) {
+        try {
+            Map<String, Object> webhookPayload = createWebhookPayload(alertInfo);
+            String jsonPayload = objectMapper.writeValueAsString(webhookPayload);
 
-        Map<String, Object> webhookPayload = createWebhookPayload(alertInfo, config);
-        String jsonPayload = objectMapper.writeValueAsString(webhookPayload);
+            RequestBody body = RequestBody.create(jsonPayload, MediaType.get("application/json"));
+            Request request = new Request.Builder()
+                    .url(webhookUrl)
+                    .post(body)
+                    .addHeader("User-Agent", "MAntiVPN-Discord-Webhook/1.0")
+                    .addHeader("Content-Type", "application/json")
+                    .build();
 
-        RequestBody body = RequestBody.create(jsonPayload, MediaType.get("application/json"));
-        Request request = new Request.Builder()
-                .url(webhookUrl)
-                .post(body)
-                .addHeader("User-Agent", "MAntiVPN-Discord-Webhook/1.0")
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (response.isSuccessful()) {
-                if (config.getDiscord().getBoolean("discord.logging.debug-success", false)) {
-                    log.debug("[Discord] Successfully sent webhook for player {}", alertInfo.username());
-                }
-            } else {
-                if (config.getDiscord().getBoolean("discord.logging.error-http-failures", true)) {
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    return true;
+                } else {
                     String responseBody = response.body() != null ? response.body().string() : "No response body";
                     log.error("[Discord] Webhook request failed with status {}: {}",
                             response.code(), responseBody);
+                    return false;
                 }
             }
+        } catch (IOException e) {
+            log.error("[Discord] IOException while sending webhook: {}", e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.error("[Discord] Unexpected error while sending webhook: {}", e.getMessage());
+            return false;
         }
     }
 
-    private Map<String, Object> createWebhookPayload(AlertInfo alertInfo, ConfigManager config) {
+    private Map<String, Object> createWebhookPayload(AlertInfo alertInfo) {
+        ConfigManager config = MAntiVPN.getConfigManager();
         Map<String, Object> payload = new HashMap<>();
 
         String username = config.getDiscord().getString("discord.bot-username", "MAntiVPN");
@@ -128,42 +147,43 @@ public class DiscordWebhookManager {
 
         String plainContent = config.getDiscord().getString("discord.content", "");
         if (!plainContent.isEmpty()) {
-            String processedContent = processPlaceholders(plainContent, alertInfo, config);
+            String processedContent = processPlaceholders(plainContent, alertInfo);
             payload.put("content", processedContent);
         }
 
         if (config.getDiscord().getBoolean("discord.embed.enabled", true)) {
-            Map<String, Object> embed = createEmbed(alertInfo, config);
+            Map<String, Object> embed = createEmbed(alertInfo);
             payload.put("embeds", List.of(embed));
         }
 
         return payload;
     }
 
-    private Map<String, Object> createEmbed(AlertInfo alertInfo, ConfigManager config) {
+    private Map<String, Object> createEmbed(AlertInfo alertInfo) {
+        ConfigManager config = MAntiVPN.getConfigManager();
         Map<String, Object> embed = new HashMap<>();
 
         String title = config.getDiscord().getString("discord.embed.title", "🚨 VPN/Proxy Detection Alert");
-        embed.put("title", processPlaceholders(title, alertInfo, config));
+        embed.put("title", processPlaceholders(title, alertInfo));
 
         String description = config.getDiscord().getString("discord.embed.description",
                 "**Player:** %player%\n**IP:** %ip%\n**Detection:** %detection%\n**Score:** %score%\n**Time:** %time%");
-        embed.put("description", processPlaceholders(description, alertInfo, config));
+        embed.put("description", processPlaceholders(description, alertInfo));
 
-        embed.put("color", getEmbedColor(alertInfo.result(), config));
+        embed.put("color", getEmbedColor(alertInfo.result()));
 
         if (config.getDiscord().getBoolean("discord.embed.timestamp", true)) {
-            embed.put("timestamp", alertInfo.timestamp().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z");
+            embed.put("timestamp", alertInfo.timestamp().atZone(java.time.ZoneId.systemDefault()).toInstant().toString());
         }
 
         if (config.getDiscord().getBoolean("discord.embed.fields.enabled", false)) {
-            embed.put("fields", createEmbedFields(alertInfo, config));
+            embed.put("fields", createEmbedFields(alertInfo));
         }
 
         if (config.getDiscord().getBoolean("discord.embed.author.enabled", false)) {
             Map<String, Object> author = new HashMap<>();
             String authorName = config.getDiscord().getString("discord.embed.author.name", "MAntiVPN");
-            author.put("name", processPlaceholders(authorName, alertInfo, config));
+            author.put("name", processPlaceholders(authorName, alertInfo));
 
             String authorIcon = config.getDiscord().getString("discord.embed.author.icon", "");
             if (!authorIcon.isEmpty()) {
@@ -181,7 +201,7 @@ public class DiscordWebhookManager {
         if (config.getDiscord().getBoolean("discord.embed.footer.enabled", true)) {
             Map<String, Object> footer = new HashMap<>();
             String footerText = config.getDiscord().getString("discord.embed.footer.text", "MAntiVPN Alert System");
-            footer.put("text", processPlaceholders(footerText, alertInfo, config));
+            footer.put("text", processPlaceholders(footerText, alertInfo));
 
             String footerIcon = config.getDiscord().getString("discord.embed.footer.icon", "");
             if (!footerIcon.isEmpty()) {
@@ -208,17 +228,19 @@ public class DiscordWebhookManager {
         return embed;
     }
 
-    private List<Map<String, Object>> createEmbedFields(AlertInfo alertInfo, ConfigManager config) {
+    private List<Map<String, Object>> createEmbedFields(AlertInfo alertInfo) {
+        ConfigManager config = MAntiVPN.getConfigManager();
         List<Map<String, Object>> fields = new ArrayList<>();
 
         List<String> fieldKeys = config.getDiscord().getStringList("discord.embed.fields.custom");
+        String timeFormatted = processPlaceholders("%time%", alertInfo);
 
         if (fieldKeys.isEmpty()) {
             fields.add(createField("Player", alertInfo.username(), true));
             fields.add(createField("IP Address", alertInfo.playerIP(), true));
-            fields.add(createField("Detection", buildDetectionTypes(alertInfo.result(), config), true));
+            fields.add(createField("Detection", buildDetectionTypes(alertInfo.result()), true));
             fields.add(createField("Score", String.valueOf(alertInfo.result().threatScore()), true));
-            fields.add(createField("Time", alertInfo.timestamp().format(DateTimeFormatter.ofPattern("HH:mm:ss")), true));
+            fields.add(createField("Time", timeFormatted, true));
         } else {
             for (String fieldKey : fieldKeys) {
                 String fieldName = config.getDiscord().getString("discord.embed.fields." + fieldKey + ".name", fieldKey);
@@ -226,8 +248,8 @@ public class DiscordWebhookManager {
                 boolean fieldInline = config.getDiscord().getBoolean("discord.embed.fields." + fieldKey + ".inline", true);
 
                 fields.add(createField(
-                        processPlaceholders(fieldName, alertInfo, config),
-                        processPlaceholders(fieldValue, alertInfo, config),
+                        processPlaceholders(fieldName, alertInfo),
+                        processPlaceholders(fieldValue, alertInfo),
                         fieldInline
                 ));
             }
@@ -244,20 +266,22 @@ public class DiscordWebhookManager {
         return field;
     }
 
-    private String processPlaceholders(String text, AlertInfo alertInfo, ConfigManager config) {
+    private String processPlaceholders(String text, AlertInfo alertInfo) {
         if (text == null || text.isEmpty()) {
             return text;
         }
 
+        java.time.ZonedDateTime zonedDateTime = alertInfo.timestamp().atZone(java.time.ZoneId.systemDefault());
+
         String result = text
                 .replace("%player%", alertInfo.username())
                 .replace("%ip%", alertInfo.playerIP())
-                .replace("%detection%", buildDetectionTypes(alertInfo.result(), config))
+                .replace("%detection%", buildDetectionTypes(alertInfo.result()))
                 .replace("%score%", String.valueOf(alertInfo.result().threatScore()))
-                .replace("%time%", alertInfo.timestamp().format(DateTimeFormatter.ofPattern("HH:mm:ss")))
-                .replace("%date%", alertInfo.timestamp().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
-                .replace("%datetime%", alertInfo.timestamp().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .replace("%timestamp%", String.valueOf(alertInfo.timestamp().toEpochSecond(java.time.ZoneOffset.UTC)));
+                .replace("%time%", zonedDateTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")))
+                .replace("%date%", zonedDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
+                .replace("%datetime%", zonedDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .replace("%timestamp%", String.valueOf(zonedDateTime.toEpochSecond()));
 
         IPCheckResult ipResult = alertInfo.result();
         if (ipResult != null) {
@@ -291,7 +315,8 @@ public class DiscordWebhookManager {
         return result;
     }
 
-    private int getEmbedColor(IPCheckResult result, ConfigManager config) {
+    private int getEmbedColor(IPCheckResult result) {
+        ConfigManager config = MAntiVPN.getConfigManager();
         double score = result.threatScore();
 
         if (score >= config.getDiscord().getInt("discord.colors.high-threshold", 90)) {
@@ -305,11 +330,12 @@ public class DiscordWebhookManager {
         }
     }
 
-    private String buildDetectionTypes(IPCheckResult result, ConfigManager config) {
+    private String buildDetectionTypes(IPCheckResult result) {
         if (result == null) {
             return "Unknown";
         }
 
+        ConfigManager config = MAntiVPN.getConfigManager();
         List<String> detections = new ArrayList<>();
 
         try {
@@ -338,9 +364,7 @@ public class DiscordWebhookManager {
                 }
             }
         } catch (Exception e) {
-            if (config.getDiscord().getBoolean("discord.logging.warn-detection-errors", true)) {
-                log.warn("[Discord] Error building detection types: {}", e.getMessage());
-            }
+            log.warn("[Discord] Error building detection types: {}", e.getMessage());
             return "Error";
         }
 
@@ -350,6 +374,27 @@ public class DiscordWebhookManager {
 
         String separator = config.getDiscord().getString("discord.detection-separator", ", ");
         return String.join(separator, detections);
+    }
+
+    private boolean shouldSendAlert(AlertInfo alertInfo) {
+        ConfigManager config = MAntiVPN.getConfigManager();
+        String username = alertInfo.username();
+
+        int cooldownMinutes = config.getDiscord().getInt("discord.player-alert-cooldown-minutes", 0);
+
+        if (cooldownMinutes <= 0) {
+            return true;
+        }
+
+        LocalDateTime lastAlertTime = playerAlertHistory.get(username);
+        if (lastAlertTime == null) {
+            return true;
+        }
+
+        LocalDateTime currentTime = LocalDateTime.now();
+        long minutesSinceLastAlert = ChronoUnit.MINUTES.between(lastAlertTime, currentTime);
+
+        return minutesSinceLastAlert >= cooldownMinutes;
     }
 
     public void shutdown() {

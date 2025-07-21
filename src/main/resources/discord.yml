@@ -8,34 +8,41 @@ discord:
 
   # Bot appearance settings
   bot-username: "MAntiVPN"
-  bot-avatar-url: "https://example.com/avatar.png"
+  bot-avatar-url: ""
 
-  # Embed customization
-  embed-description: "A player attempted to connect using a suspicious IP address."
-  footer-icon: "https://example.com/footer-icon.png"
+  # Plain text content (optional, appears above embed)
+  content: ""
 
-  # Embed colors (decimal format)
-  colors:
-    high-threat: 16711680   # Red (FF0000)
-    medium-threat: 16747520 # Orange (FF8C00)
-    low-threat: 16776960    # Yellow (FFFF00)
-
-  # Rate limiting (milliseconds between messages)
+  # Rate limiting between messages (milliseconds)
   rate-limit-ms: 2000
 
-  # Timeout settings
-  timeout-enabled: true
-  timeout-seconds: 30
+  # Player alert cooldown (minutes) - prevents spam for same player
+  player-alert-cooldown-minutes: 30
 
-  # Logging settings
-  logging:
-    warn-missing-url: true
-    debug-rate-limit: false
-    error-send-failures: true
-    error-http-failures: true
-    warn-detection-errors: true
-    debug-sent: false
-    debug-success: false
-    error-timeout: true
+  # Detection type separator
+  detection-separator: ", "
+
+  # Embed settings
+  embed:
+    enabled: true
+    title: "🚨 VPN/Proxy Detection Alert"
+    description: "**Player:** %player%\n**IP:** %ip%\n**Detection:** %detection%\n**Score:** %score%\n**Time:** %time%"
+    timestamp: true
+
+    # Footer settings
+    footer:
+      enabled: true
+      text: "MAntiVPN Alert System"
+      icon: ""
+
+    # Color thresholds and values (decimal format)
+    colors:
+      high-threshold: 90
+      medium-threshold: 70
+      low-threshold: 50
+      high-threat: 16711680    # Red
+      medium-threat: 16747520  # Orange
+      low-threat: 16776960     # Yellow
+      info-threat: 65280       # Green
 
 config-version: 1

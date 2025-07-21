@@ -94,6 +94,10 @@ public class MAntiVPN {
         this.alertManager = new AlertManager(server);
         getLogger().info("[/] Alert Manager Loaded!");
         getLogger().info("");
+        getLogger().info("[/] Loading Webhook integration....");
+        this.discordWebhookManager = new DiscordWebhookManager();
+        getLogger().info("[/] Webhook system loaded!");
+        getLogger().info("");
         getLogger().info("[/] Registering Commands and Listeners.....");
         var lamp = VelocityLamp.builder(this, server).build();
 

@@ -12,6 +12,9 @@ alerts:
     # Prevents spam by remembering recent alerts
     max-size: 1000
 
+    #Enable or disable the alert caching system
+    enabled: true
+
     # How long to remember alerts (in minutes)
     # Duplicate alerts within this time won't be sent
     expire-minutes: 5
